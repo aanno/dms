@@ -270,7 +270,15 @@ type Server struct {
 	ForceTranscodeTo string
 	// Disable media probing with ffprobe
 	NoProbe bool
-	Icons   []Icon
+	// PoC (gstreamer-snapcast-rs, docs/dlna.md): if set, every audio item gets a
+	// Snapcast resource first, pointing at this fixed stream. "{host}" is replaced
+	// by the host name the client used to reach dms, e.g.
+	// "snapcast://{host}:1704/default?control=1705".
+	SnapcastStream string
+	// The content format of SnapcastStream in protocolInfo, e.g.
+	// "audio/L16;rate=48000;channels=2" (codec pcm) or "audio/flac;rate=48000;channels=2".
+	SnapcastFormat string
+	Icons          []Icon
 	// Stall event subscription requests until they drop. A workaround for
 	// some bad clients.
 	StallEventSubscribe bool

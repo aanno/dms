@@ -53,6 +53,8 @@ type dmsConfig struct {
 	AllowedIpNets       []*net.IPNet `json:"-"` // Parsed IP networks, not directly from JSON
 	AllowDynamicStreams bool
 	TranscodeLogPattern string
+	SnapcastStream      string
+	SnapcastFormat      string
 }
 
 func (config *dmsConfig) load(configPath string) {
@@ -142,6 +144,8 @@ func mainErr() error {
 	transcodeLogPattern := flag.String("transcodeLogPattern", "", "pattern where to write transcode logs to. The [tsname] placeholder is replaced with the name of the item currently being played. The default is $HOME/.dms/log/[tsname]")
 	flag.BoolVar(&config.NoTranscode, "noTranscode", false, "disable transcoding")
 	flag.BoolVar(&config.NoProbe, "noProbe", false, "disable media probing with ffprobe")
+	flag.StringVar(&config.SnapcastStream, "snapcastStream", "", "PoC: offer this Snapcast stream as the first resource of audio items, e.g. snapcast://{host}:1704/default?control=1705 ({host}: the host clients reach dms by)")
+	flag.StringVar(&config.SnapcastFormat, "snapcastFormat", "audio/L16;rate=48000;channels=2", "PoC: the content format of -snapcastStream in protocolInfo")
 	flag.BoolVar(&config.StallEventSubscribe, "stallEventSubscribe", false, "workaround for some bad event subscribers")
 	flag.DurationVar(&config.NotifyInterval, "notifyInterval", 30*time.Second, "interval between SSPD announces")
 	flag.BoolVar(&config.IgnoreHidden, "ignoreHidden", false, "ignore hidden files and directories")
@@ -258,6 +262,8 @@ func mainErr() error {
 		ForceTranscodeTo:    config.ForceTranscodeTo,
 		TranscodeLogPattern: config.TranscodeLogPattern,
 		NoProbe:             config.NoProbe,
+		SnapcastStream:      config.SnapcastStream,
+		SnapcastFormat:      config.SnapcastFormat,
 		Icons: func() []dms.Icon {
 			var icons []dms.Icon
 			for _, size := range config.DeviceIconSizes {
