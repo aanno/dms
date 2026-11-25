@@ -271,12 +271,12 @@ type Server struct {
 	// Disable media probing with ffprobe
 	NoProbe bool
 	// PoC (gstreamer-snapcast-rs, docs/dlna.md): if set, every audio item gets a
-	// Snapcast resource first, pointing at this fixed stream. "{host}" is replaced
-	// by the host name the client used to reach dms, e.g.
+	// Snapcast session resource first: http-get with MIME type SnapcastFormat, whose
+	// URL (snapcastPath) answers with this snapcast:// URI. "{host}" is replaced by
+	// this machine's address (IPv4 if possible), e.g.
 	// "snapcast://{host}:1704/default?control=1705".
 	SnapcastStream string
-	// The content format of SnapcastStream in protocolInfo, e.g.
-	// "audio/L16;rate=48000;channels=2" (codec pcm) or "audio/flac;rate=48000;channels=2".
+	// The MIME type of the session resource, e.g. "audio/x-snapcast".
 	SnapcastFormat string
 	Icons          []Icon
 	// Stall event subscription requests until they drop. A workaround for
@@ -871,6 +871,7 @@ func (server *Server) initMux(mux *http.ServeMux) {
 	mux.HandleFunc(contentDirectoryEventSubURL, server.contentDirectoryEventSubHandler)
 	mux.HandleFunc(iconPath, server.serveIcon)
 	mux.HandleFunc(subtitlePath, server.serveSubtitle)
+	mux.HandleFunc(snapcastPath, server.serveSnapcast)
 	mux.HandleFunc(resPath, func(w http.ResponseWriter, r *http.Request) {
 		filePath := server.filePath(r.URL.Query().Get("path"))
 		if ignored, err := server.IgnorePath(filePath); err != nil {

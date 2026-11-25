@@ -273,7 +273,7 @@ func (me *contentDirectoryService) cdsObjectToUpnpavObject(
 	if mimeType.IsAudio() && me.SnapcastStream != "" {
 		// First, so that control points that take the first matching resource
 		// prefer it (docs/dlna.md in gstreamer-snapcast-rs).
-		item.Res = append(item.Res, snapcastResource(me.SnapcastStream, me.SnapcastFormat, host, resDuration))
+		item.Res = append(item.Res, snapcastResource(host, cdsObject.Path, me.SnapcastFormat, resDuration))
 	}
 	item.Res = append(item.Res, upnpav.Resource{
 		URL: (&url.URL{
