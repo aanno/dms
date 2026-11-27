@@ -54,9 +54,23 @@ dms -path ~/Music -friendlyName "dms snapcast" \
 - **Code:** `crates/gst-plugin-snapsink/examples/session-sender.rs` in
   gstreamer-snapcast-rs (a cargo example of the `snapsink` crate). It plays a file
   with GStreamer into `snapsink`.
-- **Building it** is done in gstreamer-snapcast-rs (see its `docs/dlna-tests.md`,
-  Setup). The binary ends up in that repo's `target/` directory, e.g.
-  `target/release/examples/session-sender`.
+- **Building it** by hand, in the root of gstreamer-snapcast-rs (this dms is its
+  submodule `dlna/dms`):
+
+  ```sh
+  cargo build --release -p gst-plugin-snapsink --features control --example session-sender
+  ```
+
+  The binary is then `target/release/examples/session-sender` in gstreamer-snapcast-rs.
+  From this directory (`dlna/dms`) that's `../../target/release/examples/session-sender`.
+  Cargo puts examples into `target/<profile>/examples/`. `--features control` is
+  required by the example (it also lets the helper run its own server in
+  `--mode embedded`).
+- **A debug build is often there too:** `../../target/debug/examples/session-sender`.
+  `cargo test` builds a crate's examples as well, so `make check` and `make test` in
+  gstreamer-snapcast-rs leave a debug build there. The workspace enables the
+  `control` feature through another crate's tests. It works, but it's slower and
+  much larger. Prefer the release build, or make sure the debug one is current.
 
 - **Where it must be:** anywhere. dms runs the first word of `-snapcastFeeder`:
   - **a path:** absolute, or relative to the directory dms was started in (not
