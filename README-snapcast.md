@@ -54,14 +54,9 @@ dms -path ~/Music -friendlyName "dms snapcast" \
 - **Code:** `crates/gst-plugin-snapsink/examples/session-sender.rs` in
   gstreamer-snapcast-rs (a cargo example of the `snapsink` crate). It plays a file
   with GStreamer into `snapsink`.
-- **Building it,** from the root of gstreamer-snapcast-rs:
-
-  ```sh
-  make dlna-build    # also builds dms and gmrender; links target/dlna/session-sender
-  # or only the helper:
-  cargo build --release -p gst-plugin-snapsink --features control --example session-sender
-  # -> target/release/examples/session-sender
-  ```
+- **Building it** is done in gstreamer-snapcast-rs (see its `docs/dlna-tests.md`,
+  Setup). The binary ends up in that repo's `target/` directory, e.g.
+  `target/release/examples/session-sender`.
 
 - **Where it must be:** anywhere. dms runs the first word of `-snapcastFeeder`:
   - **a path:** absolute, or relative to the directory dms was started in (not
@@ -82,8 +77,8 @@ dms -path ~/Music -friendlyName "dms snapcast" \
   - dms adds `--paused`: the renderer's play starts the session.
 - **What the helper needs at runtime:**
   - **`snapsink`** is built into it, so no installed plugin is needed.
-  - **`gst-snapcast-daemon`,** on `PATH` (`make install` puts it into
-    `~/.local/bin`) or named in `GST_SNAPCAST_DAEMON`. The helper starts it if it
+  - **`gst-snapcast-daemon`** (from gstreamer-snapcast-rs), on `PATH` or named in
+    `GST_SNAPCAST_DAEMON`. The helper starts it if it
     isn't running.
   - **`XDG_RUNTIME_DIR`** must be short enough for a Unix socket path (normally
     `/run/user/<uid>`); otherwise the helper fails with a message saying so.
@@ -109,8 +104,8 @@ dms logs, per session:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `flag provided but not defined: -mode` | The helper's options weren't quoted together with it | `-snapcastFeeder "path/session-sender --mode shared --idle-exit 600"` |
-| The helper logs `warning: No shared Snapcast server: running an embedded server` | No `--mode shared`, and the daemon wasn't found | Pass `--mode shared`; install the daemon (`make install`) or set `GST_SNAPCAST_DAEMON` |
-| The helper logs `error: … shared Snapcast server: cannot start …` | `--mode shared`, and the daemon wasn't found | Install the daemon (`make install`) or set `GST_SNAPCAST_DAEMON` |
+| The helper logs `warning: No shared Snapcast server: running an embedded server` | No `--mode shared`, and the daemon wasn't found | Pass `--mode shared`; put `gst-snapcast-daemon` on `PATH` or set `GST_SNAPCAST_DAEMON` |
+| The helper logs `error: … shared Snapcast server: cannot start …` | `--mode shared`, and the daemon wasn't found | Put `gst-snapcast-daemon` on `PATH` or set `GST_SNAPCAST_DAEMON` |
 | `… socket path … is N bytes, but Unix sockets allow at most 107` | `XDG_RUNTIME_DIR` is too long | Use the normal `/run/user/<uid>` |
 | The renderer plays the plain file instead of a session | The renderer doesn't ask (gmrender without `--snapcast-sessions`, or without `snapsrc` installed), or the session didn't open (see dms's log) | Check gmrender's startup line `Asking servers for Snapcast sessions`, and dms's `snapcast session …` lines |
 
