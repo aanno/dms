@@ -53,7 +53,7 @@ type dmsConfig struct {
 	AllowedIpNets       []*net.IPNet `json:"-"` // Parsed IP networks, not directly from JSON
 	AllowDynamicStreams bool
 	TranscodeLogPattern string
-	SnapcastStream      string
+	SnapcastStreams     []string
 }
 
 func (config *dmsConfig) load(configPath string) {
@@ -143,7 +143,13 @@ func mainErr() error {
 	transcodeLogPattern := flag.String("transcodeLogPattern", "", "pattern where to write transcode logs to. The [tsname] placeholder is replaced with the name of the item currently being played. The default is $HOME/.dms/log/[tsname]")
 	flag.BoolVar(&config.NoTranscode, "noTranscode", false, "disable transcoding")
 	flag.BoolVar(&config.NoProbe, "noProbe", false, "disable media probing with ffprobe")
-	flag.StringVar(&config.SnapcastStream, "snapcastStream", "", "PoC: answer requests for an audio item with \"Accept: audio/x-snapcast-tcp\" with this Snapcast session URI instead of the media, e.g. snapcast-tcp://{host}:1704/default?control=1705 ({host}: this machine, IPv4 if possible)")
+	flag.Func("snapcastStream", "PoC: offer this Snapcast session URI to renderers that ask for its transport (\"Accept: audio/x-snapcast-tcp\" for snapcast-tcp://), instead of the media; repeat for more transports, most preferred first. E.g. snapcast-tcp://{host}:1704/default?control=1705 ({host}: this machine, IPv4 if possible)", func(v string) error {
+		if dms.SnapcastMimeType(v) == "" {
+			return fmt.Errorf("not a Snapcast session URI (snapcast-tcp:// or snapcast-ws://): %q", v)
+		}
+		config.SnapcastStreams = append(config.SnapcastStreams, v)
+		return nil
+	})
 	flag.BoolVar(&config.StallEventSubscribe, "stallEventSubscribe", false, "workaround for some bad event subscribers")
 	flag.DurationVar(&config.NotifyInterval, "notifyInterval", 30*time.Second, "interval between SSPD announces")
 	flag.BoolVar(&config.IgnoreHidden, "ignoreHidden", false, "ignore hidden files and directories")
@@ -260,7 +266,7 @@ func mainErr() error {
 		ForceTranscodeTo:    config.ForceTranscodeTo,
 		TranscodeLogPattern: config.TranscodeLogPattern,
 		NoProbe:             config.NoProbe,
-		SnapcastStream:      config.SnapcastStream,
+		SnapcastStreams:     config.SnapcastStreams,
 		Icons: func() []dms.Icon {
 			var icons []dms.Icon
 			for _, size := range config.DeviceIconSizes {

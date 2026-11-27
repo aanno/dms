@@ -270,12 +270,13 @@ type Server struct {
 	ForceTranscodeTo string
 	// Disable media probing with ffprobe
 	NoProbe bool
-	// PoC (gstreamer-snapcast-rs, docs/dlna-snapcast-protocol.md): if set, a request
-	// for an audio item's resource with "Accept: audio/x-snapcast-tcp" gets this
-	// snapcast-tcp:// URI instead of the media (snapcast.go). "{host}" is replaced by
-	// this machine's address (IPv4 if possible), e.g.
-	// "snapcast-tcp://{host}:1704/default?control=1705".
-	SnapcastStream string
+	// PoC (gstreamer-snapcast-rs, docs/dlna-snapcast-protocol.md): the Snapcast
+	// session URIs offered for audio items, one per transport (snapcast-tcp://,
+	// snapcast-ws://), most preferred first. A request whose Accept header names a
+	// transport's MIME type (audio/x-snapcast-tcp, ...) gets the best match instead
+	// of the media (snapcast.go). "{host}" is replaced by this machine's address
+	// (IPv4 if possible), e.g. "snapcast-tcp://{host}:1704/default?control=1705".
+	SnapcastStreams []string
 	Icons          []Icon
 	// Stall event subscription requests until they drop. A workaround for
 	// some bad clients.

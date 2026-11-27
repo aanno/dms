@@ -4,13 +4,13 @@ package dms
 // playback through a Snapcast session, by content negotiation on the ordinary
 // resource URL. Control points such as BubbleUPnP pass on only resources of MIME types
 // they know, so there is no extra resource in the listing. A renderer that can play
-// Snapcast sessions asks for the item's /res URL with
+// Snapcast sessions asks for the item's /res URL (HEAD or GET) with the transports it
+// can play, e.g.
 //
-//	Accept: audio/x-snapcast-tcp
+//	Accept: audio/x-snapcast-tcp, audio/x-snapcast-ws;q=0.9
 //
-// (HEAD or GET) and gets that Content-Type and, for GET, the session's
-// snapcast-tcp:// URI as one line of text. Any other request gets the media as
-// before.
+// and gets the chosen transport's MIME type as Content-Type and, for GET, the
+// session URI as one line of text. Any other request gets the media as before.
 
 import (
 	"log/slog"
@@ -21,41 +21,79 @@ import (
 	"strings"
 )
 
-// snapcastTCPType is the MIME type of a Snapcast session reached over TCP (Snapcast's
-// binary stream protocol). A WebSocket variant would be audio/x-snapcast-ws.
-const snapcastTCPType = "audio/x-snapcast-tcp"
+// snapcastTransports maps the URI scheme of a Snapcast session to the MIME type that
+// names its transport in the negotiation.
+var snapcastTransports = map[string]string{
+	"snapcast-tcp": "audio/x-snapcast-tcp", // Snapcast's binary protocol
+	"snapcast-ws":  "audio/x-snapcast-ws",  // over WebSocket
+}
 
-// acceptsSnapcast tells whether the request's Accept header asks for snapcastTCPType
-// (with q > 0).
-func acceptsSnapcast(r *http.Request) bool {
+// SnapcastMimeType is the transport's MIME type for a session URI, or "".
+func SnapcastMimeType(uri string) string {
+	scheme, _, ok := strings.Cut(uri, "://")
+	if !ok {
+		return ""
+	}
+	return snapcastTransports[strings.ToLower(scheme)]
+}
+
+// acceptQuality is the q value the request's Accept header gives mimeType: 0 if it
+// isn't listed explicitly (wildcards don't count: only a renderer that names a
+// Snapcast transport gets a session).
+func acceptQuality(r *http.Request, mimeType string) float64 {
+	best := 0.0
 	for _, field := range r.Header.Values("Accept") {
 		for _, part := range strings.Split(field, ",") {
 			mt, params, err := mime.ParseMediaType(strings.TrimSpace(part))
-			if err != nil || !strings.EqualFold(mt, snapcastTCPType) {
+			if err != nil || !strings.EqualFold(mt, mimeType) {
 				continue
 			}
-			if q, err := strconv.ParseFloat(params["q"], 64); err == nil && q == 0 {
-				continue // explicitly not acceptable
+			q := 1.0
+			if v, ok := params["q"]; ok {
+				if q, err = strconv.ParseFloat(v, 64); err != nil {
+					continue
+				}
 			}
-			return true
+			best = max(best, q)
 		}
 	}
-	return false
+	return best
+}
+
+// chooseSnapcastSession picks the session URI (template) for the request: among
+// sessions, the one whose transport the request accepts with the highest q; on a
+// tie, the earlier one. "" if none is accepted.
+func chooseSnapcastSession(r *http.Request, sessions []string) (uri, mimeType string) {
+	bestQ := 0.0
+	for _, s := range sessions {
+		mt := SnapcastMimeType(s)
+		if mt == "" {
+			continue
+		}
+		if q := acceptQuality(r, mt); q > bestQ {
+			bestQ, uri, mimeType = q, s, mt
+		}
+	}
+	return uri, mimeType
 }
 
 // serveSnapcastSession answers a renderer that asks for the Snapcast session of the
 // item at filePath (see the top of this file) and reports whether it did. Later this
 // is where dms opens the session (starts feeding the item into the Snapcast server).
 func (server *Server) serveSnapcastSession(w http.ResponseWriter, r *http.Request, filePath string) bool {
-	if server.SnapcastStream == "" || !acceptsSnapcast(r) {
+	if len(server.SnapcastStreams) == 0 || r.Header.Get("Accept") == "" {
 		return false
 	}
-	if mimeType, err := MimeTypeByPath(server.FS, filePath); err != nil || !mimeType.IsAudio() {
+	template, mimeType := chooseSnapcastSession(r, server.SnapcastStreams)
+	if template == "" {
 		return false
 	}
-	uri := strings.ReplaceAll(server.SnapcastStream, "{host}", snapcastHost(r))
+	if mt, err := MimeTypeByPath(server.FS, filePath); err != nil || !mt.IsAudio() {
+		return false
+	}
+	uri := strings.ReplaceAll(template, "{host}", snapcastHost(r))
 	slog.Info("snapcast session requested", "path", r.URL.Query().Get("path"), "method", r.Method, "uri", uri, "remote", r.RemoteAddr)
-	w.Header().Set("Content-Type", snapcastTCPType)
+	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Vary", "Accept")
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodHead {
@@ -64,7 +102,7 @@ func (server *Server) serveSnapcastSession(w http.ResponseWriter, r *http.Reques
 	return true
 }
 
-// snapcastHost is the address of this machine for the snapcast-tcp:// URI: the local
+// snapcastHost is the address of this machine for the session URI: the local
 // address of the request, but IPv4 if the request came over IPv6 and the interface
 // has an IPv4 address (the Snapcast server may listen on IPv4 only).
 func snapcastHost(r *http.Request) string {
