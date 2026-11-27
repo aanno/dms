@@ -54,7 +54,6 @@ type dmsConfig struct {
 	AllowDynamicStreams bool
 	TranscodeLogPattern string
 	SnapcastStream      string
-	SnapcastFormat      string
 }
 
 func (config *dmsConfig) load(configPath string) {
@@ -144,8 +143,7 @@ func mainErr() error {
 	transcodeLogPattern := flag.String("transcodeLogPattern", "", "pattern where to write transcode logs to. The [tsname] placeholder is replaced with the name of the item currently being played. The default is $HOME/.dms/log/[tsname]")
 	flag.BoolVar(&config.NoTranscode, "noTranscode", false, "disable transcoding")
 	flag.BoolVar(&config.NoProbe, "noProbe", false, "disable media probing with ffprobe")
-	flag.StringVar(&config.SnapcastStream, "snapcastStream", "", "PoC: offer a session of this Snapcast stream as the first resource of audio items (http-get, MIME type -snapcastFormat; its URL answers with this URI), e.g. snapcast://{host}:1704/default?control=1705 ({host}: this machine, IPv4 if possible)")
-	flag.StringVar(&config.SnapcastFormat, "snapcastFormat", "audio/x-snapcast", "PoC: the MIME type of the -snapcastStream session resource")
+	flag.StringVar(&config.SnapcastStream, "snapcastStream", "", "PoC: answer requests for an audio item with \"Accept: audio/x-snapcast-tcp\" with this Snapcast session URI instead of the media, e.g. snapcast-tcp://{host}:1704/default?control=1705 ({host}: this machine, IPv4 if possible)")
 	flag.BoolVar(&config.StallEventSubscribe, "stallEventSubscribe", false, "workaround for some bad event subscribers")
 	flag.DurationVar(&config.NotifyInterval, "notifyInterval", 30*time.Second, "interval between SSPD announces")
 	flag.BoolVar(&config.IgnoreHidden, "ignoreHidden", false, "ignore hidden files and directories")
@@ -263,7 +261,6 @@ func mainErr() error {
 		TranscodeLogPattern: config.TranscodeLogPattern,
 		NoProbe:             config.NoProbe,
 		SnapcastStream:      config.SnapcastStream,
-		SnapcastFormat:      config.SnapcastFormat,
 		Icons: func() []dms.Icon {
 			var icons []dms.Icon
 			for _, size := range config.DeviceIconSizes {

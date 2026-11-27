@@ -270,14 +270,12 @@ type Server struct {
 	ForceTranscodeTo string
 	// Disable media probing with ffprobe
 	NoProbe bool
-	// PoC (gstreamer-snapcast-rs, docs/dlna.md): if set, every audio item gets a
-	// Snapcast session resource first: http-get with MIME type SnapcastFormat, whose
-	// URL (snapcastPath) answers with this snapcast:// URI. "{host}" is replaced by
+	// PoC (gstreamer-snapcast-rs, docs/dlna-snapcast-protocol.md): if set, a request
+	// for an audio item's resource with "Accept: audio/x-snapcast-tcp" gets this
+	// snapcast-tcp:// URI instead of the media (snapcast.go). "{host}" is replaced by
 	// this machine's address (IPv4 if possible), e.g.
-	// "snapcast://{host}:1704/default?control=1705".
+	// "snapcast-tcp://{host}:1704/default?control=1705".
 	SnapcastStream string
-	// The MIME type of the session resource, e.g. "audio/x-snapcast".
-	SnapcastFormat string
 	Icons          []Icon
 	// Stall event subscription requests until they drop. A workaround for
 	// some bad clients.
@@ -871,7 +869,6 @@ func (server *Server) initMux(mux *http.ServeMux) {
 	mux.HandleFunc(contentDirectoryEventSubURL, server.contentDirectoryEventSubHandler)
 	mux.HandleFunc(iconPath, server.serveIcon)
 	mux.HandleFunc(subtitlePath, server.serveSubtitle)
-	mux.HandleFunc(snapcastPath, server.serveSnapcast)
 	mux.HandleFunc(resPath, func(w http.ResponseWriter, r *http.Request) {
 		filePath := server.filePath(r.URL.Query().Get("path"))
 		if ignored, err := server.IgnorePath(filePath); err != nil {
@@ -879,6 +876,9 @@ func (server *Server) initMux(mux *http.ServeMux) {
 			return
 		} else if ignored {
 			http.Error(w, "no such object", http.StatusNotFound)
+			return
+		}
+		if server.serveSnapcastSession(w, r, filePath) {
 			return
 		}
 		if strings.HasSuffix(filePath, dmsMetadataSuffix) {

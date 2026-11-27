@@ -1,66 +1,70 @@
 package dms
 
-// PoC (gstreamer-snapcast-rs, docs/dlna.md): synchronized multiroom playback through a
-// Snapcast session. Control points such as BubbleUPnP don't pass resources with a
-// protocol other than http-get on to renderers, so the session is offered as an
-// http-get resource of its own MIME type (audio/x-snapcast). A renderer that knows
-// the type fetches the URL and gets the snapcast:// URI of the session to play.
+// PoC (gstreamer-snapcast-rs, docs/dlna-snapcast-protocol.md): synchronized multiroom
+// playback through a Snapcast session, by content negotiation on the ordinary
+// resource URL. Control points such as BubbleUPnP pass on only resources of MIME types
+// they know, so there is no extra resource in the listing. A renderer that can play
+// Snapcast sessions asks for the item's /res URL with
+//
+//	Accept: audio/x-snapcast-tcp
+//
+// (HEAD or GET) and gets that Content-Type and, for GET, the session's
+// snapcast-tcp:// URI as one line of text. Any other request gets the media as
+// before.
 
 import (
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
-	"net/url"
+	"strconv"
 	"strings"
-
-	"github.com/anacrolix/dms/upnpav"
 )
 
-const snapcastPath = "/snapcast"
+// snapcastTCPType is the MIME type of a Snapcast session reached over TCP (Snapcast's
+// binary stream protocol). A WebSocket variant would be audio/x-snapcast-ws.
+const snapcastTCPType = "audio/x-snapcast-tcp"
 
-// snapcastResource is the Snapcast resource of an audio item (see
-// Server.SnapcastStream). host is the host the client reached dms by.
-func snapcastResource(host, path, format, duration string) upnpav.Resource {
-	return upnpav.Resource{
-		URL: (&url.URL{
-			Scheme:   "http",
-			Host:     host,
-			Path:     snapcastPath,
-			RawQuery: url.Values{"path": {path}}.Encode(),
-		}).String(),
-		ProtocolInfo: "http-get:*:" + format + ":*",
-		Duration:     duration,
+// acceptsSnapcast tells whether the request's Accept header asks for snapcastTCPType
+// (with q > 0).
+func acceptsSnapcast(r *http.Request) bool {
+	for _, field := range r.Header.Values("Accept") {
+		for _, part := range strings.Split(field, ",") {
+			mt, params, err := mime.ParseMediaType(strings.TrimSpace(part))
+			if err != nil || !strings.EqualFold(mt, snapcastTCPType) {
+				continue
+			}
+			if q, err := strconv.ParseFloat(params["q"], 64); err == nil && q == 0 {
+				continue // explicitly not acceptable
+			}
+			return true
+		}
 	}
+	return false
 }
 
-// serveSnapcast answers a renderer's request for an item's Snapcast session with the
-// session's snapcast:// URI (text, one line). Later this is where dms opens the
-// session (starts feeding the item into the Snapcast server).
-func (server *Server) serveSnapcast(w http.ResponseWriter, r *http.Request) {
-	if server.SnapcastStream == "" {
-		http.Error(w, "snapcast sessions are off (-snapcastStream)", http.StatusNotFound)
-		return
+// serveSnapcastSession answers a renderer that asks for the Snapcast session of the
+// item at filePath (see the top of this file) and reports whether it did. Later this
+// is where dms opens the session (starts feeding the item into the Snapcast server).
+func (server *Server) serveSnapcastSession(w http.ResponseWriter, r *http.Request, filePath string) bool {
+	if server.SnapcastStream == "" || !acceptsSnapcast(r) {
+		return false
 	}
-	path := r.URL.Query().Get("path")
-	filePath := server.filePath(path)
-	if ignored, err := server.IgnorePath(filePath); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	} else if ignored {
-		http.Error(w, "no such object", http.StatusNotFound)
-		return
+	if mimeType, err := MimeTypeByPath(server.FS, filePath); err != nil || !mimeType.IsAudio() {
+		return false
 	}
 	uri := strings.ReplaceAll(server.SnapcastStream, "{host}", snapcastHost(r))
-	slog.Info("snapcast session requested", "path", path, "uri", uri, "remote", r.RemoteAddr)
-	mime := server.SnapcastFormat
-	if i := strings.IndexByte(mime, ';'); i >= 0 {
-		mime = mime[:i]
+	slog.Info("snapcast session requested", "path", r.URL.Query().Get("path"), "method", r.Method, "uri", uri, "remote", r.RemoteAddr)
+	w.Header().Set("Content-Type", snapcastTCPType)
+	w.Header().Set("Vary", "Accept")
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodHead {
+		w.Write([]byte(uri + "\n"))
 	}
-	w.Header().Set("Content-Type", mime)
-	w.Write([]byte(uri + "\n"))
+	return true
 }
 
-// snapcastHost is the address of this machine for the snapcast:// URI: the local
+// snapcastHost is the address of this machine for the snapcast-tcp:// URI: the local
 // address of the request, but IPv4 if the request came over IPv6 and the interface
 // has an IPv4 address (the Snapcast server may listen on IPv4 only).
 func snapcastHost(r *http.Request) string {
