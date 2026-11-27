@@ -277,6 +277,9 @@ type Server struct {
 	// of the media (snapcast.go). "{host}" is replaced by this machine's address
 	// (IPv4 if possible), e.g. "snapcast-tcp://{host}:1704/default?control=1705".
 	SnapcastStreams []string
+	// Plays an item into its session's stream when a template has "{stream}"
+	// (snapcast_feeder.go); nil: something else feeds the streams.
+	SnapcastFeeder SessionFeeder
 	Icons          []Icon
 	// Stall event subscription requests until they drop. A workaround for
 	// some bad clients.

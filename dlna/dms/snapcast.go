@@ -17,6 +17,8 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -92,6 +94,24 @@ func (server *Server) serveSnapcastSession(w http.ResponseWriter, r *http.Reques
 		return false
 	}
 	uri := strings.ReplaceAll(template, "{host}", snapcastHost(r))
+	if strings.Contains(uri, "{stream}") {
+		// A session per item: the GET opens it (snapcast_feeder.go). HEAD only asks.
+		stream := snapcastStreamName(filePath)
+		uri = strings.ReplaceAll(uri, "{stream}", url.PathEscape(stream))
+		if r.Method != http.MethodHead && server.SnapcastFeeder != nil {
+			// The feeder runs in dms's working directory, not the media root (as
+			// ffmpeg does for transcoding).
+			absPath, err := filepath.Abs(filepath.Join(server.rootPath, filePath))
+			if err == nil {
+				err = server.SnapcastFeeder.Open(r.Context(), stream, absPath)
+			}
+			if err != nil {
+				// No session after all: the renderer gets the media instead.
+				slog.Error("snapcast session not opened; serving the media", "path", filePath, "stream", stream, "err", err)
+				return false
+			}
+		}
+	}
 	slog.Info("snapcast session requested", "path", r.URL.Query().Get("path"), "method", r.Method, "uri", uri, "remote", r.RemoteAddr)
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Vary", "Accept")

@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"os/user"
 	"path/filepath"
@@ -54,6 +55,7 @@ type dmsConfig struct {
 	AllowDynamicStreams bool
 	TranscodeLogPattern string
 	SnapcastStreams     []string
+	SnapcastFeeder      []string
 }
 
 func (config *dmsConfig) load(configPath string) {
@@ -143,7 +145,14 @@ func mainErr() error {
 	transcodeLogPattern := flag.String("transcodeLogPattern", "", "pattern where to write transcode logs to. The [tsname] placeholder is replaced with the name of the item currently being played. The default is $HOME/.dms/log/[tsname]")
 	flag.BoolVar(&config.NoTranscode, "noTranscode", false, "disable transcoding")
 	flag.BoolVar(&config.NoProbe, "noProbe", false, "disable media probing with ffprobe")
-	flag.Func("snapcastStream", "PoC: offer this Snapcast session URI to renderers that ask for its transport (\"Accept: audio/x-snapcast-tcp\" for snapcast-tcp://), instead of the media; repeat for more transports, most preferred first. E.g. snapcast-tcp://{host}:1704/default?control=1705 ({host}: this machine, IPv4 if possible)", func(v string) error {
+	flag.Func("snapcastFeeder", "PoC: a session per audio item: run this command (with its arguments) per session, with \"--paused <file> <stream>\" appended, e.g. 'session-sender --mode auto --idle-exit 600'. Needs {stream} in -snapcastStream", func(v string) error {
+		config.SnapcastFeeder = strings.Fields(v)
+		if len(config.SnapcastFeeder) == 0 {
+			return fmt.Errorf("empty command")
+		}
+		return nil
+	})
+	flag.Func("snapcastStream", "PoC: offer this Snapcast session URI to renderers that ask for its transport (\"Accept: audio/x-snapcast-tcp\" for snapcast-tcp://), instead of the media; repeat for more transports, most preferred first. E.g. snapcast-tcp://{host}:1704/default?control=1705 ({host}: this machine, IPv4 if possible; {stream}: a stream per item, see -snapcastFeeder)", func(v string) error {
 		if dms.SnapcastMimeType(v) == "" {
 			return fmt.Errorf("not a Snapcast session URI (snapcast-tcp:// or snapcast-ws://): %q", v)
 		}
@@ -267,6 +276,7 @@ func mainErr() error {
 		TranscodeLogPattern: config.TranscodeLogPattern,
 		NoProbe:             config.NoProbe,
 		SnapcastStreams:     config.SnapcastStreams,
+		SnapcastFeeder:      snapcastFeeder(config.SnapcastFeeder, config.SnapcastStreams),
 		Icons: func() []dms.Icon {
 			var icons []dms.Icon
 			for _, size := range config.DeviceIconSizes {
@@ -438,4 +448,26 @@ func makeIpNets(s string) []*net.IPNet {
 		}
 	}
 	return nets
+}
+
+// snapcastFeeder is the session feeder for -snapcastFeeder, or nil.
+func snapcastFeeder(command []string, streams []string) dms.SessionFeeder {
+	perItem := false
+	for _, s := range streams {
+		perItem = perItem || strings.Contains(s, "{stream}")
+	}
+	if len(command) == 0 {
+		if perItem {
+			slog.Warn("-snapcastStream has {stream} but there is no -snapcastFeeder: something else must feed the dms-... streams")
+		}
+		return nil
+	}
+	if !perItem {
+		slog.Error("-snapcastFeeder needs {stream} in -snapcastStream (a stream per item)")
+		os.Exit(2)
+	}
+	if _, err := exec.LookPath(command[0]); err != nil {
+		slog.Warn("-snapcastFeeder not found: renderers get the media instead of sessions", "command", command[0], "error", err)
+	}
+	return &dms.ProcessFeeder{Command: command}
 }
