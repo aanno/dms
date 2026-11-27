@@ -145,7 +145,7 @@ func mainErr() error {
 	transcodeLogPattern := flag.String("transcodeLogPattern", "", "pattern where to write transcode logs to. The [tsname] placeholder is replaced with the name of the item currently being played. The default is $HOME/.dms/log/[tsname]")
 	flag.BoolVar(&config.NoTranscode, "noTranscode", false, "disable transcoding")
 	flag.BoolVar(&config.NoProbe, "noProbe", false, "disable media probing with ffprobe")
-	flag.Func("snapcastFeeder", "PoC: a session per audio item: run this command (with its arguments) per session, with \"--paused <file> <stream>\" appended, e.g. 'session-sender --mode auto --idle-exit 600'. Needs {stream} in -snapcastStream", func(v string) error {
+	flag.Func("snapcastFeeder", "PoC: a Snapcast session per audio item: run this command per session, with \"--paused <file> <stream>\" appended. Quote it as one argument with its options, e.g. \"/path/to/session-sender --mode shared --idle-exit 600\". Needs {stream} in -snapcastStream. See README-snapcast.md", func(v string) error {
 		config.SnapcastFeeder = strings.Fields(v)
 		if len(config.SnapcastFeeder) == 0 {
 			return fmt.Errorf("empty command")
